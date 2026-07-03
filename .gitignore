@@ -1,0 +1,55 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+.flattened-pom.xml
+.m2/
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.code-workspace
+.project
+.classpath
+.settings/
+*.orig
+*.rej
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temp & logs
+*.tmp
+*.log
+*.swp
+*~
+.#*
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Runtime
+*.class
+*.jar
+.gradle
+build/
+
+# Testing
+coverage/
+.jacoco.exec
+target/site/jacoco/

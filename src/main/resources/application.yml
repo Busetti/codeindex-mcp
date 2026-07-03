@@ -1,0 +1,82 @@
+server:
+  # HTTPS by default (MCP clients such as Claude Code require TLS for the http transport).
+  # Plain HTTP fallback:  SERVER_SSL_ENABLED=false SERVER_PORT=8080
+  port: ${SERVER_PORT:8443}
+  ssl:
+    enabled: ${SERVER_SSL_ENABLED:true}
+    key-store: classpath:keystore.p12
+    key-store-type: PKCS12
+    key-store-password: ${SERVER_SSL_PASSWORD:changeit}
+    key-alias: codeindex
+
+spring:
+  application:
+    name: codeindex-mcp
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/codeindex
+    username: codeindex
+    password: codeindex
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  ai:
+    # ---- MCP server (Streamable HTTP transport) ----
+    mcp:
+      server:
+        name: codeindex-mcp
+        version: 0.1.0
+        protocol: STREAMABLE
+        type: SYNC
+        instructions: >
+          Code-intelligence server for one or more Java/Spring codebases. If several repos are
+          indexed, call list_repos FIRST and pass the matching 'repo' argument to the other tools;
+          if the user names a service, map it to that repo. Triage cheaply: start from
+          get_endpoint_map, drill with trace_call_chain, read single methods via get_method_source,
+          list problems via get_hotspot_report, and fall back to semantic_search when you don't know
+          the symbol names. Prefer these tools over reading whole source files.
+        annotation-scanner:
+          enabled: true
+
+    # ---- Local embeddings: default ONNX all-MiniLM-L6-v2 (-> 384 dims, output "last_hidden_state") ----
+
+    # ---- pgvector store ----
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 384
+        table-name: code_chunks
+
+# ---- Application-specific ----
+codeindex:
+  # Default source root to index when reindex is called without an explicit path.
+  default-root: ${CODEINDEX_ROOT:./examples/sample-target}
+  # Logical name used to namespace multiple indexed codebases in the DB.
+  default-repo: ${CODEINDEX_DEFAULT_REPO:sample-target}
+  # Index the configured repos once on boot.
+  reindex-on-startup: true
+
+  # Scheduled reindex to keep the index fresh. Disabled by default.
+  schedule:
+    enabled: ${CODEINDEX_SCHEDULE_ENABLED:false}
+    cron: ${CODEINDEX_SCHEDULE_CRON:-}      # e.g. "0 0 * * * *" = hourly; "-" = disabled
+
+  # Optionally index several codebases from one server. When set, this takes precedence over
+  # default-root/default-repo for startup + scheduled indexing. Example:
+  # repos:
+  #   - name: sample-target
+  #     root: ./examples/sample-target
+  #   - name: orders-service
+  #     root: /srv/checkouts/orders-service
+  repos: []
+
+  # Skip build output / generated code; add "**/src/test/**" unless include-tests is true.
+  include-tests: false
+
+logging:
+  level:
+    com.example.codeindex: INFO

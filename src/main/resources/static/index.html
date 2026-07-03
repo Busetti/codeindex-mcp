@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>codeindex-mcp — Indexer</title>
+<style>
+  :root {
+    --bg:#0f141b; --panel:#161d27; --border:#26313f; --text:#d7e0ea; --muted:#8494a6;
+    --accent:#4f9cf9; --accent2:#2b6fd6; --ok:#37c871; --high:#ff5d5d; --med:#ffb020; --low:#7f8ea3;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+  .wrap { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:20px 24px; max-width:1200px; }
+  @media (max-width:900px){ .wrap{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .span2 { grid-column:1 / -1; }
+  .reporow { cursor:pointer; }
+  .reporow:hover td { background:#0d1219; }
+  .tool { display:flex; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); font-size:12px; }
+  .tool code { color:var(--accent); white-space:nowrap; }
+  .tool span { color:var(--muted); }
+  .panel h2 { margin:0 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  label.f { font-size:12px; color:var(--muted); width:70px; }
+  input[type=text]{ flex:1; min-width:160px; background:#0d1219; border:1px solid var(--border);
+        color:var(--text); border-radius:7px; padding:8px 10px; font-size:13px; }
+  button { background:var(--accent2); color:#fff; border:0; border-radius:7px; padding:8px 14px;
+        font-size:13px; cursor:pointer; }
+  button:hover{ background:var(--accent); } button:disabled{ opacity:.5; cursor:default; }
+  button.ghost{ background:transparent; border:1px solid var(--border); color:var(--text); }
+  #tree { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; max-height:360px;
+        overflow:auto; margin-top:8px; }
+  #tree ul { list-style:none; margin:0; padding-left:18px; }
+  #tree li { padding:2px 0; }
+  .tnode { display:flex; align-items:center; gap:6px; }
+  .tog { width:14px; color:var(--muted); cursor:pointer; user-select:none; text-align:center; }
+  .cnt { color:var(--muted); font-size:11px; }
+  .skip > .tnode > .nm { color:var(--muted); text-decoration:line-through; }
+  .prog { height:14px; background:#0d1219; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .bar { height:100%; width:0; background:linear-gradient(90deg,var(--accent2),var(--accent));
+        transition:width .3s ease; }
+  .stat { font-size:12px; color:var(--muted); margin-top:8px; min-height:16px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  .sev { font-weight:700; } .sev.HIGH{color:var(--high);} .sev.MEDIUM{color:var(--med);} .sev.LOW{color:var(--low);}
+  .pill { display:inline-block; background:#0d1219; border:1px solid var(--border); border-radius:20px;
+        padding:3px 10px; font-size:11px; color:var(--muted); }
+  .hint { color:var(--muted); font-size:12px; }
+  code { background:#0d1219; padding:1px 5px; border-radius:4px; }
+  #graph { height:380px; background:#0d1219; border:1px solid var(--border); border-radius:8px; margin-top:8px; }
+  select { background:#0d1219; border:1px solid var(--border); color:var(--text); border-radius:7px; padding:8px 10px; font-size:13px; }
+  .cycle { color:var(--high); font-size:12px; font-family:ui-monospace,monospace; }
+  .legend { font-size:11px; color:var(--muted); margin-top:6px; }
+  .legend b { padding:1px 6px; border-radius:4px; color:#08111c; }
+  .thresholds { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+  .thresholds label { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;
+        background:#0d1219; border:1px solid var(--border); border-radius:7px; padding:6px 9px; }
+  .thresholds input { width:64px; background:transparent; border:0; color:var(--text); font-size:13px; }
+  .toggles { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:4px 12px; margin-top:8px; }
+  .toggles label { font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .toggles label.off { color:var(--muted); text-decoration:line-through; }
+</style>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>codeindex-mcp · Indexer</h1>
+  <p>Point at a Java/Spring project, deselect folders to skip, and index it for the MCP tools.</p>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: project + folder selection -->
+  <div class="panel">
+    <h2>1 · Project</h2>
+    <div class="row">
+      <label class="f">Path</label>
+      <input id="path" type="text" value="./examples/sample-target" placeholder="/abs/path/to/service">
+      <button id="loadBtn" onclick="loadTree()">Load folders</button>
+    </div>
+    <div class="row">
+      <label class="f">Repo</label>
+      <input id="repo" type="text" placeholder="(defaults to folder name)">
+      <span class="pill" id="fileCount">–</span>
+    </div>
+    <p class="hint">Checked folders are <b>skipped</b>. Build/VCS/test dirs are pre-checked.</p>
+    <div id="tree"><p class="hint">Load a path to see its folder structure.</p></div>
+  </div>
+
+  <!-- RIGHT: index progress + results -->
+  <div class="panel">
+    <h2>2 · Index</h2>
+    <div class="row">
+      <button id="startBtn" onclick="startIndex()" disabled>Start indexing</button>
+      <span class="stat" id="phase"></span>
+    </div>
+    <div class="prog"><div class="bar" id="bar"></div></div>
+    <div class="stat" id="stat"></div>
+
+    <h2 style="margin-top:20px">3 · Hotspots</h2>
+    <div id="hotspots"><p class="hint">Findings appear here after indexing.</p></div>
+  </div>
+
+  <!-- FULL WIDTH: indexed repos + MCP tools -->
+  <div class="panel span2">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Indexed repos</h2>
+      <button class="ghost" onclick="loadRepos()">Refresh</button>
+    </div>
+    <div id="repos"><p class="hint">Loading…</p></div>
+    <p class="hint" style="margin-top:10px">
+      One shared tool set — every tool takes an optional <code>repo</code>. With several repos, an
+      MCP client calls <code>list_repos</code> first, then passes the matching <code>repo</code>.
+    </p>
+    <h2 style="margin-top:16px">MCP tools</h2>
+    <div id="tools"><p class="hint">Loading…</p></div>
+  </div>
+
+  <!-- FULL WIDTH: architecture (type dependency graph + cycles) -->
+  <div class="panel span2">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Architecture — type dependencies</h2>
+      <span>
+        <select id="archRepo"></select>
+        <button onclick="loadGraph()">Load graph</button>
+        <a id="dotLink" class="pill" href="#" target="_blank" style="text-decoration:none">DOT export</a>
+      </span>
+    </div>
+    <div class="legend">
+      <b style="background:#4f9cf9">Controller</b>
+      <b style="background:#37c871">Service</b>
+      <b style="background:#ffb020">Repository</b>
+      <b style="background:#b98bff">Component</b>
+      <b style="background:#cccccc">Other</b>
+    </div>
+    <div id="cycles"></div>
+    <div id="graph"></div>
+  </div>
+
+  <!-- FULL WIDTH: per-repo rule configuration -->
+  <div class="panel span2">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Rule configuration <span class="hint">— thresholds &amp; toggles per repo</span></h2>
+      <span>
+        <select id="cfgRepo"></select>
+        <button class="ghost" onclick="loadConfig()">Load</button>
+        <button onclick="saveConfig()">Save</button>
+        <button onclick="applyConfig()">Save &amp; Reapply</button>
+      </span>
+    </div>
+    <div id="cfgStatus" class="stat"></div>
+    <div class="thresholds">
+      <label>God class LOC &gt; <input type="number" id="godClassLoc"></label>
+      <label>God class methods &gt; <input type="number" id="godClassMethods"></label>
+      <label>Long method LOC &gt; <input type="number" id="longMethodLoc"></label>
+      <label>Cyclomatic &gt; <input type="number" id="highComplexity"></label>
+      <label>Nesting depth &gt; <input type="number" id="deepNesting"></label>
+      <label>Params &gt; <input type="number" id="tooManyParams"></label>
+    </div>
+    <p class="hint" style="margin:10px 0 2px">Enabled rules (uncheck to silence a category for this repo):</p>
+    <div id="ruleToggles" class="toggles"></div>
+  </div>
+</div>
+
+<script>
+let poll = null;
+
+document.addEventListener('DOMContentLoaded', () => { loadRepos(); loadTools(); loadArchRepos(); loadCfgRepos(); });
+
+// ---- Rule configuration (per repo) ----------------------------------------
+const RULE_CATS = [
+  'N_PLUS_ONE','EXTERNAL_CALL_IN_LOOP','UNPAGINATED_QUERY','NATIVE_SELECT_STAR','STRING_CONCAT_IN_LOOP',
+  'GOD_CLASS','LONG_METHOD','HIGH_COMPLEXITY','DEEP_NESTING','TOO_MANY_PARAMS',
+  'SILENT_FAILURE','MISSING_ERROR_HANDLING','HARDCODED_SECRET','SQL_INJECTION_RISK'
+];
+let cfgPoll = null;
+
+async function loadCfgRepos() {
+  try {
+    const rows = await (await fetch('/api/repos')).json();
+    const sel = document.getElementById('cfgRepo');
+    sel.innerHTML = rows.map(r => `<option value="${r.repo}">${r.repo}</option>`).join('');
+    if (rows.length) loadConfig();
+  } catch (e) { /* repos panel surfaces errors */ }
+}
+
+function renderToggles(disabled) {
+  const set = new Set(disabled || []);
+  document.getElementById('ruleToggles').innerHTML = RULE_CATS.map(c => {
+    const on = !set.has(c);
+    return `<label class="${on ? '' : 'off'}"><input type="checkbox" class="ruletog" value="${c}" ${on ? 'checked' : ''}
+       onchange="this.closest('label').classList.toggle('off', !this.checked)">${c}</label>`;
+  }).join('');
+}
+
+async function loadConfig() {
+  const repo = document.getElementById('cfgRepo').value;
+  if (!repo) return;
+  document.getElementById('cfgStatus').textContent = '';
+  const c = await (await fetch('/api/config?repo=' + encodeURIComponent(repo))).json();
+  godClassLoc.value = c.godClassLoc; godClassMethods.value = c.godClassMethods;
+  longMethodLoc.value = c.longMethodLoc; highComplexity.value = c.highComplexity;
+  deepNesting.value = c.deepNesting; tooManyParams.value = c.tooManyParams;
+  renderToggles(c.disabledRules);
+}
+
+function buildConfig() {
+  const disabled = [...document.querySelectorAll('.ruletog')].filter(c => !c.checked).map(c => c.value);
+  return {
+    godClassLoc: +godClassLoc.value, godClassMethods: +godClassMethods.value,
+    longMethodLoc: +longMethodLoc.value, highComplexity: +highComplexity.value,
+    deepNesting: +deepNesting.value, tooManyParams: +tooManyParams.value,
+    disabledRules: disabled
+  };
+}
+
+async function saveConfig() {
+  const repo = document.getElementById('cfgRepo').value;
+  const res = await fetch('/api/config', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ repo, config: buildConfig() })
+  });
+  document.getElementById('cfgStatus').textContent = res.ok
+    ? '✓ Saved. Click "Save & Reapply" to re-evaluate findings.'
+    : 'Error saving config';
+}
+
+async function applyConfig() {
+  const repo = document.getElementById('cfgRepo').value;
+  const st = document.getElementById('cfgStatus');
+  st.textContent = 'Re-applying…';
+  try {
+    const res = await fetch('/api/config/apply', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ repo, config: buildConfig() })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const job = await res.json();
+    if (cfgPoll) clearInterval(cfgPoll);
+    cfgPoll = setInterval(async () => {
+      const j = await (await fetch('/api/index/' + job.id)).json();
+      st.textContent = (j.message || j.phase) + ' — ' + j.percent + '%';
+      if (j.status === 'DONE') {
+        clearInterval(cfgPoll);
+        st.textContent = `✓ Reapplied — ${j.stats.hotspots} findings (no re-embed).`;
+        loadHotspots(repo); loadRepos();
+      } else if (j.status === 'ERROR') {
+        clearInterval(cfgPoll);
+        st.textContent = 'Failed: ' + (j.error || '');
+      }
+    }, 400);
+  } catch (e) {
+    st.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function loadArchRepos() {
+  try {
+    const rows = await (await fetch('/api/repos')).json();
+    const sel = document.getElementById('archRepo');
+    sel.innerHTML = rows.map(r => `<option value="${r.repo}">${r.repo}</option>`).join('');
+  } catch (e) { /* repos panel already surfaces errors */ }
+}
+
+async function loadGraph() {
+  const repo = document.getElementById('archRepo').value;
+  if (!repo) return;
+  document.getElementById('dotLink').href = '/api/graph.dot?repo=' + encodeURIComponent(repo);
+  const cyclesEl = document.getElementById('cycles');
+  const graphEl = document.getElementById('graph');
+  try {
+    const g = await (await fetch('/api/graph?repo=' + encodeURIComponent(repo))).json();
+    cyclesEl.innerHTML = g.cycles.length
+      ? '⚠️ Circular dependencies: ' + g.cycles.map(c => '<span class="cycle">' + c.join(' → ') + '</span>').join(' &nbsp; ')
+      : '<span class="hint">✓ No circular dependencies</span>';
+    if (typeof cytoscape === 'undefined') {
+      graphEl.innerHTML = '<p class="hint" style="padding:12px">Graph library (CDN) unavailable — use the DOT export link with any Graphviz viewer.</p>';
+      return;
+    }
+    const colors = {CONTROLLER:'#4f9cf9', SERVICE:'#37c871', REPOSITORY:'#ffb020', COMPONENT:'#b98bff'};
+    cytoscape({
+      container: graphEl,
+      elements: [
+        ...g.nodes.map(n => ({ data: { id: n.id, label: n.label, c: colors[n.stereotype] || '#cccccc' } })),
+        ...g.edges.map(e => ({ data: { source: e.source, target: e.target, label: e.count } }))
+      ],
+      style: [
+        { selector: 'node', style: { 'background-color': 'data(c)', 'label': 'data(label)',
+            'color': '#08111c', 'font-size': 10, 'text-valign': 'center', 'width': 'label', 'padding': '8px',
+            'shape': 'round-rectangle' } },
+        { selector: 'edge', style: { 'width': 1.5, 'line-color': '#3a4658', 'target-arrow-color': '#3a4658',
+            'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)',
+            'font-size': 8, 'color': '#8494a6' } }
+      ],
+      layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.3, padding: 12 }
+    });
+  } catch (e) {
+    graphEl.innerHTML = '<p class="hint" style="color:var(--high);padding:12px">Error loading graph: ' + e.message + '</p>';
+  }
+}
+
+async function loadRepos() {
+  const el = document.getElementById('repos');
+  try {
+    const rows = await (await fetch('/api/repos')).json();
+    if (!rows.length) { el.innerHTML = '<p class="hint">No repos indexed yet.</p>'; return; }
+    let html = '<table><tr><th>Repo</th><th>Symbols</th><th>Endpoints</th><th>Hotspots</th><th>Chunks</th></tr>';
+    rows.forEach(r => {
+      html += `<tr class="reporow" title="Click to filter hotspots" onclick="loadHotspots('${r.repo}')">`
+            + `<td><b>${r.repo}</b></td><td>${r.symbols}</td><td>${r.endpoints}</td>`
+            + `<td>${r.hotspots}</td><td>${r.chunks}</td></tr>`;
+    });
+    el.innerHTML = html + '</table>';
+  } catch (e) { el.innerHTML = '<p class="hint" style="color:var(--high)">Error loading repos</p>'; }
+}
+
+async function loadTools() {
+  const el = document.getElementById('tools');
+  try {
+    const tools = await (await fetch('/api/tools')).json();
+    el.innerHTML = tools.map(t => `<div class="tool"><code>${t.name}</code><span>${t.description}</span></div>`).join('');
+  } catch (e) { el.innerHTML = '<p class="hint" style="color:var(--high)">Error loading tools</p>'; }
+}
+
+async function loadTree() {
+  const path = document.getElementById('path').value.trim();
+  const treeEl = document.getElementById('tree');
+  treeEl.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const res = await fetch('/api/tree?path=' + encodeURIComponent(path));
+    if (!res.ok) throw new Error((await res.text()) || res.status);
+    const root = await res.json();
+    treeEl.innerHTML = '';
+    treeEl.appendChild(renderNode(root, true));
+    document.getElementById('startBtn').disabled = false;
+    updateFileCount();
+  } catch (e) {
+    treeEl.innerHTML = '<p class="hint" style="color:var(--high)">Error: ' + e.message + '</p>';
+    document.getElementById('startBtn').disabled = true;
+  }
+}
+
+function renderNode(node, isRoot) {
+  const li = document.createElement('li');
+  const row = document.createElement('div');
+  row.className = 'tnode';
+
+  const hasKids = node.children && node.children.length;
+  const tog = document.createElement('span');
+  tog.className = 'tog';
+  const kidsUl = document.createElement('ul');
+  kidsUl.style.display = isRoot ? 'block' : 'none';
+  tog.textContent = hasKids ? (isRoot ? '▼' : '▶') : '';
+  tog.onclick = () => {
+    const open = kidsUl.style.display === 'block';
+    kidsUl.style.display = open ? 'none' : 'block';
+    tog.textContent = hasKids ? (open ? '▶' : '▼') : '';
+  };
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'skipcb';
+  cb.dataset.path = node.path;
+  cb.checked = !isRoot && node.defaultExcluded;   // never skip the root itself
+  cb.disabled = isRoot;
+  cb.onchange = () => { cascade(li, cb.checked); li.classList.toggle('skip', cb.checked); updateFileCount(); };
+
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = node.name + '/';
+  const cnt = document.createElement('span');
+  cnt.className = 'cnt';
+  cnt.textContent = node.javaFiles ? node.javaFiles + ' .java' : '';
+
+  row.append(tog, cb, nm, cnt);
+  li.appendChild(row);
+  if (cb.checked) li.classList.add('skip');
+
+  if (hasKids) {
+    node.children.forEach(c => kidsUl.appendChild(renderNode(c, false)));
+    li.appendChild(kidsUl);
+  }
+  return li;
+}
+
+function cascade(li, checked) {
+  li.querySelectorAll('input.skipcb').forEach(c => {
+    if (!c.disabled) { c.checked = checked; c.closest('li').classList.toggle('skip', checked); }
+  });
+}
+
+function selectedExcludes() {
+  return [...document.querySelectorAll('input.skipcb:checked')]
+    .filter(c => !c.disabled).map(c => c.dataset.path);
+}
+
+function updateFileCount() {
+  // rough count: sum of java files in non-skipped nodes
+  let total = 0;
+  document.querySelectorAll('#tree li').forEach(li => {
+    if (li.classList.contains('skip')) return;
+    const cnt = li.querySelector(':scope > .tnode > .cnt');
+    if (cnt) { const m = cnt.textContent.match(/(\d+)/); if (m) total += +m[1]; }
+  });
+  document.getElementById('fileCount').textContent = total + ' .java to index';
+}
+
+async function startIndex() {
+  const path = document.getElementById('path').value.trim();
+  const repo = document.getElementById('repo').value.trim();
+  const exclude = selectedExcludes();
+  document.getElementById('startBtn').disabled = true;
+  setBar(0, 'starting…');
+  document.getElementById('hotspots').innerHTML = '<p class="hint">Indexing…</p>';
+  try {
+    const res = await fetch('/api/index', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path, repo, exclude })
+    });
+    if (!res.ok) throw new Error((await res.text()) || res.status);
+    const job = await res.json();
+    document.getElementById('repo').value = job.repo;
+    pollJob(job.id);
+  } catch (e) {
+    setBar(0, 'Error: ' + e.message);
+    document.getElementById('startBtn').disabled = false;
+  }
+}
+
+function pollJob(id) {
+  if (poll) clearInterval(poll);
+  poll = setInterval(async () => {
+    const res = await fetch('/api/index/' + id);
+    if (!res.ok) return;
+    const j = await res.json();
+    setBar(j.percent, j.message || j.phase);
+    if (j.status === 'DONE') {
+      clearInterval(poll);
+      const s = j.stats;
+      document.getElementById('stat').textContent =
+        `${s.symbols} symbols · ${s.endpoints} endpoints · ${s.callEdges} edges · ${s.hotspots} hotspots · ${s.chunks} chunks`;
+      document.getElementById('startBtn').disabled = false;
+      loadHotspots(j.repo);
+      loadRepos();
+    } else if (j.status === 'ERROR') {
+      clearInterval(poll);
+      setBar(j.percent, 'Failed: ' + (j.error || ''));
+      document.getElementById('startBtn').disabled = false;
+    }
+  }, 500);
+}
+
+function setBar(pct, text) {
+  document.getElementById('bar').style.width = pct + '%';
+  document.getElementById('phase').textContent = pct + '%';
+  document.getElementById('stat').textContent = text || '';
+}
+
+async function loadHotspots(repo) {
+  const el = document.getElementById('hotspots');
+  try {
+    const res = await fetch('/api/hotspots?repo=' + encodeURIComponent(repo));
+    const rows = await res.json();
+    if (!rows.length) { el.innerHTML = '<p class="hint">No hotspots found 🎉</p>'; return; }
+    let html = '<table><tr><th>Sev</th><th>Category</th><th>Where</th><th>Why</th></tr>';
+    rows.forEach(h => {
+      const where = h.symbolFqn.split('#').pop() + '<br><span class="hint">' + h.location.split('/').pop() + '</span>';
+      html += `<tr><td class="sev ${h.severity}">${h.severity}</td><td><code>${h.category}</code></td>`
+            + `<td>${where}</td><td>${h.rationale}</td></tr>`;
+    });
+    el.innerHTML = html + '</table>';
+  } catch (e) {
+    el.innerHTML = '<p class="hint" style="color:var(--high)">Error loading hotspots</p>';
+  }
+}
+</script>
+</body>
+</html>

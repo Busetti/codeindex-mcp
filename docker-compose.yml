@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: codeindex-pg
+    environment:
+      POSTGRES_DB: codeindex
+      POSTGRES_USER: codeindex
+      POSTGRES_PASSWORD: codeindex
+    ports:
+      - "5433:5432"          # host 5433 -> container 5432 (avoids clashing with a local pg)
+    volumes:
+      - codeindex-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codeindex -d codeindex"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  codeindex-pgdata:
