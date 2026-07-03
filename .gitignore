@@ -53,3 +53,12 @@ build/
 coverage/
 .jacoco.exec
 target/site/jacoco/
+
+# TLS/Security (keystores contain private keys; exclude but keep .pem public certs)
+keystore.p12
+*.keystore
+*.jks
+.keystore/
+
+# Note: src/main/resources/keystore.p12 is excluded via pattern above
+# certs/codeindex-cert.pem is safe (public cert only, no private key)
